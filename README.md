@@ -1,6 +1,6 @@
 # Transfer function GUI for GLFW3
 
-Graphical user interface for transfer function used in volume rendering, originally created by Luiyit Hernandez.   
+Graphical user interface for transfer function used in volume rendering, originally created by Luiyit Hernandez. Now the interface works with OpenGL 4.5, using shaders.
 
 ### Usage
 
@@ -32,12 +32,20 @@ g_pTransferFunc->Display();
 In the main loop:
 ```cpp
 // Check if the color palette changed
-if(g_pTransferFunc->updateTexture)    
-	UpdateTexture();
+if(g_pTransferFunc->NeedUpdate())    
+	UpdatePallete();
 // Update the color palette
-// This is obtained by: g_pTransferFunc->colorPalette
-g_pTransferFunc->updateTexture = false;
+g_pTransferFunc->SetUpdate(false);
 ```
+
+Finally, the texture can be bound to an active texture unit with:
+
+```cpp
+// Check if the color palette changed
+g_pTransferFunc->Use(GL_TEXTURE0);
+```
+
+Some functions have been added to load transfer functions from a file and to save the actual transfer function in a file.
 
 [Click here](https://www.youtube.com/watch?v=2ONEKOq4d0U) to see the general characteristics of this GUI in a video.
 

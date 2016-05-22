@@ -1,670 +1,951 @@
 #include "TransferFunction.h"
+#include <fstream>
+#include <iostream>
 
-bool operator<( const specialPoint &point1, const specialPoint &point2 ) 
+bool operator<(const ControlPoint &point1, const ControlPoint &point2)
 {
-	return point1.point.x > point2.point.x;
+	if (point1.scalar > point2.scalar) return true;
+	if (point1.scalar == point2.scalar)
+		if (point1.color.a < point2.color.a)return true;
+	return false;
 }
 
-TransferFunction::TransferFunction(void):imageW( IMAGEWIDHT ), imageH( IMAGEHEIGHT ), ptsCounter( 0 ), lastPicking( 0 ), lastPickingColor(0), dragDrop( false ), dragDropColor( false ), dragDropPicker( false ), indicatorSC( 0 ), pointSelected( 1 ), palleteCreated( false ), updateTexture( true )
+//Default constructor
+TransferFunction::TransferFunction(void) :m_imageW(IMAGEWIDHT), m_imageH(IMAGEHEIGHT), m_ptsCounter(0), m_lastPicking(0), m_dragDrop(false), m_dragDropColor(false), m_dragDropPicker(false), m_pointSelected(1), m_palleteCreated(false), m_updateTexture(true)
 {
-	baseColors[ 0 ] = glm::vec4( 1.0f, 0.0f, 0.0f, 1.0f );
-	baseColors[ 1 ] = glm::vec4( 1.0f, 0.0f, 1.0f, 1.0f );
-	baseColors[ 2 ] = glm::vec4( 0.0f, 0.0f, 1.0f, 1.0f );
-	baseColors[ 3 ] = glm::vec4( 0.0f, 1.0f, 1.0f, 1.0f);
-	baseColors[ 4 ] = glm::vec4( 0.0f, 1.0f, 0.0f, 1.0f );
-	baseColors[ 5 ] = glm::vec4( 1.0f, 1.0f, 0.0f, 1.0f );
+	m_baseColors[0] = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+	m_baseColors[1] = glm::vec4(1.0f, 1.0f, 0.0f, 1.0f);
+	m_baseColors[2] = glm::vec4(0.0f, 1.0f, 0.0f, 1.0f);
+	m_baseColors[3] = glm::vec4(0.0f, 1.0f, 1.0f, 1.0f);
+	m_baseColors[4] = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f); 
+	m_baseColors[5] = glm::vec4(1.0f, 0.0f, 1.0f, 1.0f); 
 
-	currentColor = glm::vec4( 1.0f, 0.0f, 0.0f, 1.0 );
-	currentColorPickerPos = glm::ivec2( MINWPC + 6, MINHPC + 6 );
-	
-	alpha = 0.5;
+	m_currentColor = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+	m_PosHue = glm::ivec2(MINWPC + 6, MINHPC + 6);
+
+
+	//Create texture!!
+	glActiveTexture(GL_TEXTURE0);
+
+	//Create new empty textures
+	TextureManager::Inst()->CreateTexture1D(TEXTURE_TRANSFER_FUNC, 256, GL_RGBA8, GL_RGBA, GL_FLOAT, GL_NEAREST, GL_NEAREST);
 }
 
+//Default constructor
 TransferFunction::~TransferFunction(void)
 {
 }
 
-void TransferFunction::InitContext( GLFWwindow *window, int *windowsW, int *windowsH, int posx, int posy )
+
+//Function to init context
+void TransferFunction::InitContext(GLFWwindow *window, int *windowsW, int *windowsH, const char * file, int posx, int posy)
 {
-	unsigned int tId;
 
-	ilInit();
+	//Load the tetures!!
+	glActiveTexture(GL_TEXTURE0);
 
-	tId = ILoadImage((std::string)"assets/transferFunction.jpg");
-	if(tId > 1)
-	{ 
-		ilBindImage(tId);
-		ILoadText(ilGetInteger(IL_IMAGE_WIDTH),ilGetInteger(IL_IMAGE_HEIGHT), ilGetData(), txtId, GL_FALSE, GL_BGRA_EXT, GL_RGBA, 0, 0);	
+	string ruta = PROJECT_DIR + string("assets/transferFunction.jpg");
+
+	//Graphic
+	if (!TextureManager::Inst()->LoadTexture2D(ruta.c_str(), TEXTURE_TRANSFER_FUNC0, GL_RGB, GL_RGB)){
+		printf("Problem loading a %s\n", ruta.c_str());
+		exit(EXIT_FAILURE);
 	}
 
-	tId = ILoadImage((std::string)"assets/point.png");
-	if(tId > 1)
-	{ 
-		ilBindImage(tId);
-		ILoadText(ilGetInteger(IL_IMAGE_WIDTH),ilGetInteger(IL_IMAGE_HEIGHT),ilGetData(), ptsId, GL_FALSE, GL_BGRA_EXT, GL_RGBA, 0, 0);	
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+	//Point
+	ruta = PROJECT_DIR + string("assets/point.png");
+	if (!TextureManager::Inst()->LoadTexture2D(ruta.c_str(), TEXTURE_TRANSFER_FUNC1, GL_RGBA, GL_RGBA)){
+		printf("Problem loading a %s\n", ruta.c_str());
+		exit(EXIT_FAILURE);
 	}
 
-	tId = ILoadImage((std::string)"assets/selector.png");
-	if(tId > 1)
-	{ 
-		ilBindImage(tId);
-		ILoadText(ilGetInteger(IL_IMAGE_WIDTH),ilGetInteger(IL_IMAGE_HEIGHT),ilGetData(),sltId, GL_FALSE, GL_BGRA_EXT, GL_RGBA, 0, 0);	
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+	//Cursor
+	ruta = PROJECT_DIR + string("assets/selector.png");
+	if (!TextureManager::Inst()->LoadTexture2D(ruta.c_str(), TEXTURE_TRANSFER_FUNC2, GL_RGBA, GL_RGBA)){
+		printf("Problem loading a %s\n", ruta.c_str());
+		exit(EXIT_FAILURE);
 	}
 
-	isVisible = true;
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
-	this->window = window;
+	//Set the GUI to visible
+	m_isVisible = true;
 
-	this->windowsW = windowsW;
-	this->windowsH = windowsH;
+	m_window = window;
 
-	this->posx = (*windowsW - posx < 365 || posx < 0)? 0: posx;
-	this->posy = (*windowsH - posy < 455 || posy < 0)? 0: posy;
+	m_windowsW = windowsW;
+	m_windowsH = windowsH;
 
-	this->MouseButton( MAXW + this->posx, MINH + this->posy, GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS );					
-	this->pointSelected = 0;							
+	//Original position of the user
+	if (posx == -1 || posy == -1) m_corner = true;
+	else m_corner = false;
+
+	m_realposx = posx;
+	m_realposx = posy;
+
+	Resize(windowsW, windowsH);
+
+	bool load = false;
+
+
+	if (file != NULL){
+
+
+		std::ifstream input(file, std::ios::in);
+
+		if (!input.is_open()){
+			printf("Couldn't load transfer function file: %s", file);
+		}
+		else{
+
+			int N;
+			input >> N;
+
+			for (int i = 0; i < N; ++i){
+				int s;
+				float r, g, b, a;
+				input >> s;
+				input >> r >> g >> b >> a;
+				m_controlPointVector[m_ptsCounter].scalar = s;
+				m_controlPointVector[m_ptsCounter].color = glm::vec4(r, g, b, a);
+				m_controlPointVector[m_ptsCounter].hsv = RGBtoHSV(glm::vec3(m_controlPointVector[m_ptsCounter].color));
+				++m_ptsCounter;
+			}
+
+			input.close();
+			load = true;
+		}
+
+	}
+
+	if (!load){
+		//Set the first point
+		m_controlPointVector[m_ptsCounter].scalar = 0;
+		m_controlPointVector[m_ptsCounter].color = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
+		m_controlPointVector[m_ptsCounter].hsv = RGBtoHSV(glm::vec3(m_controlPointVector[m_ptsCounter].color));
+		++m_ptsCounter;
+
+		//Set the last point
+		m_controlPointVector[m_ptsCounter].scalar = 255;
+		m_controlPointVector[m_ptsCounter].color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+		m_controlPointVector[m_ptsCounter].hsv = RGBtoHSV(glm::vec3(m_controlPointVector[m_ptsCounter].color));
+		++m_ptsCounter;
+	}
 	
-	this->MouseButton( MINWPC + this->posx, MAXHPC + this->posy, GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS );					
-	this->MouseButton( MINW + this->posx, MAXH + this->posy, GLFW_MOUSE_BUTTON_LEFT,  GLFW_PRESS );						
-	
-	this->MouseButton( MAXW + this->posx, MINH + this->posy, GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE );					
+	//sort the points
+	SortPoints();
 
-	this->UpdatePallete();
+	//Set the controllers at position 0
+	m_pointSelected = 1;
+	m_PosTF = ScalarAlphaToScreenPosTF(m_controlPointVector[m_pointSelected].scalar, m_controlPointVector[m_pointSelected].color.a);
+	m_PosHue = HSVToScreenPosHue(m_controlPointVector[m_pointSelected].hsv);
+	m_PosSV = HSVToScreenPosSV(m_controlPointVector[m_pointSelected].hsv);
+	//modify current color
+	setCurrentColor();
+	UpdatePallete();
 
-	isVisible = false;
+	//Set non selected point by now
+	m_pointSelected = 0;
+
+	//Initiate the GUI invisible
+	m_isVisible = false;
+
+	//Load the shaders
+	try{
+		m_program.compileShader(PROJECT_DIR + string("./shaders/TransferFunction.vert"), GLSLShader::VERTEX);
+		m_program.compileShader(PROJECT_DIR + string("./shaders/TransferFunction.frag"), GLSLShader::FRAGMENT);
+		m_program.link();
+	}
+	catch (GLSLProgramException & e) {
+		std::cerr << e.what() << std::endl;
+		exit(EXIT_FAILURE);
+	}
 }
 
+//Function to rezise the windows
+void TransferFunction::Resize(int *windowsW, int *windowsH){
+
+	m_windowsW = windowsW;
+	m_windowsH = windowsH;
+
+	//Set the position of the transfer function
+	if (m_corner)	m_posx = m_realposx = (*windowsW >  SIZEW) ? *windowsW - SIZEW : 0;
+	else		m_posx = m_realposx = (*windowsW - m_realposx < SIZEW) ? ((*windowsW < SIZEW) ? 0 : *windowsW - SIZEW) : m_realposx;
+
+	//Dont let it pass the corner
+	if (m_realposx <0) m_realposx = m_posx = 0;
+
+	//Set the position of the transfer function
+	if (m_corner){
+		m_posy = *windowsH - SIZEH;
+		m_realposy = 0;
+	}
+	else{
+		if (m_realposy + SIZEH > *windowsH) m_realposy = *windowsH - SIZEH;
+		else m_realposy = m_realposy;
+
+		m_posy = (*windowsH - m_realposy - SIZEH < 0) ? ((*windowsH < SIZEH) ? *windowsH - SIZEH : 0) : *windowsH - m_realposy - SIZEH;
+
+
+	}
+
+	//Dont let it pass the corner
+	if (m_posy + SIZEH > *windowsH)	m_posy = *windowsH - SIZEH, m_realposy = 0;
+}
+
+//Function to display the transfer function
 void TransferFunction::Display()
 {
-	if(!isVisible)
+	if (!m_isVisible)
 		return;
 
-	glViewport(posx, -posy,  *windowsW, *windowsH);
+	glViewport(m_posx, m_posy, SIZEW, SIZEH);
 
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-	glOrtho(0, *windowsW, *windowsH, 0, 0, 0);
-
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
+	m_mProjMatrix = glm::ortho(0.0f, float(SIZEW), 0.0f, float(SIZEH));
 
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glEnable(GL_BLEND);
 
-	glDisable( GL_TEXTURE_2D );
-	glDisable( GL_DEPTH_TEST );
+	glDisable(GL_DEPTH_TEST);
 
-	glBindTexture( GL_TEXTURE_2D, this->txtId );
-	glEnable( GL_TEXTURE_2D );
+	glActiveTexture(GL_TEXTURE0);
+	TextureManager::Inst()->BindTexture(TEXTURE_TRANSFER_FUNC0);
 
-	float w = getX( imageW ); 
-	float h = getY( imageH );
+	//>>>>>>>>>>>>>>>Drawing the image with the control points
+	float ww = float(m_imageW), hh = float(m_imageH);
 
-	glColor4f( 1.0, 1.0, 1.0, alpha );
-	glBegin( GL_QUADS );
-		glTexCoord2f(0, 1);
-		glVertex3f( -1.0f, 1.0f, -0.01f );
+	float alpha = 0.5f;
 
-		glTexCoord2f(0, 0);
-		glVertex3f( -1.0f, h, -0.01f );
+	if (m_dragDropWindow) alpha = 0.7f;
 
-		glTexCoord2f(1, 0);
-		glVertex3f( w, h, -0.01f );
+	glm::vec4 color = glm::vec4(1.0f, 1.0f, 1.0f, alpha);
 
-		glTexCoord2f(1, 1);
-		glVertex3f( w, 1.0f, -0.01f );
-	glEnd();
+	m_mModelViewMatrix =
+		glm::scale(glm::translate(glm::mat4(),
+		glm::vec3(ww*0.5f, -hh*0.5f + SIZEH, 0.0f)),	//Translate by half + to its position
+		glm::vec3(ww, hh, 1.0f));							//Scale
 
-	glDisable( GL_TEXTURE_2D );
+	//Enable the shader
+	m_program.use();
 
-	float divW = ( -1.0 - w ) / 6.0;
-	float h2 = 1.0 - getY( 2 );
-	float h3 = 1.0 - getY( 30 );
+	m_program.setUniform("mProjection", m_mProjMatrix);
+	m_program.setUniform("tex", 0);
 
-	for( int i=0; i<6; i++ )
+	//Draw a Cube
+	m_program.setUniform("vColor1", color);
+	m_program.setUniform("Usetexture", 1);
+	m_program.setUniform("Mode", 0);
+	m_program.setUniform("mModelView", m_mModelViewMatrix);
+	FBOQuad::Instance()->Draw();
+	//>>>>>>>>>>>>>>>END Drawing the image with the control points
+
+	//>>>>>>>>>>>>>>>Draw the color chooser
+	float iniH = float(SIZEH - (m_imageH + 2)), iniW;
+	float hh2 = float(m_imageH) + 2, hh3 = float(m_imageH) + 30, sizeW = float(m_imageW) / 6.0f, sizeH = 30;
+
+	for (int i = 0; i<6; i++)
 	{
-		glBegin( GL_QUADS );
+		m_mModelViewMatrix =
+			glm::scale(glm::translate(glm::mat4(),
+			glm::vec3(sizeW*0.5f + sizeW * i, -sizeH*0.5f + iniH, 0.0f)),	//Translate by half + to its position
+			glm::vec3(sizeW, sizeH, 1.0f));									//Scale
 
-			glColor3fv(glm::value_ptr(baseColors[i]));
-			glVertex3f( -1.0 - divW * i, h - h2, 0.0f );
-
-			glColor3fv(glm::value_ptr(baseColors[ i ]));
-			glVertex3f( -1.0 - divW * i, h - h3, 0.0f );
-
-			glColor3fv(glm::value_ptr(baseColors[ (i + 1) % 6 ]));
-			glVertex3f( -1.0 - divW * ( i + 1 ), h - h3, 0.0f );
-
-			glColor3fv(glm::value_ptr(baseColors[ (i + 1) % 6 ]));
-			glVertex3f( -1.0 - divW * ( i + 1 ), h - h2, 0.0f );
-
-		glEnd();
+		//Draw a Cube
+		m_program.setUniform("vColor1", m_baseColors[i]);
+		m_program.setUniform("vColor2", m_baseColors[(i + 1) % 6]);
+		m_program.setUniform("vColor3", m_baseColors[(i + 1) % 6]);
+		m_program.setUniform("vColor4", m_baseColors[i]);
+		m_program.setUniform("Usetexture", 0);
+		m_program.setUniform("Mode", 1);
+		m_program.setUniform("mModelView", m_mModelViewMatrix);
+		FBOQuad::Instance()->Draw();
 	}
-
-	glColor4f( 1.0f, 1.0f, 1.0f, 1.0f );
-	glBindTexture( GL_TEXTURE_2D, this->sltId );
-	glEnable( GL_TEXTURE_2D );
-
-	float baseW = getX( this->indicatorSC );
-
-	glBegin( GL_QUADS );
-		glTexCoord2f(0, 1);
-		glVertex3f( baseW, h - h2, 0.0f );
-
-		glTexCoord2f(0, 0);
-		glVertex3f( baseW, h - h3, 0.0f );
-
-		glTexCoord2f(1, 0);
-		glVertex3f( baseW - (divW / 6), h - h3, 0.0f );
-
-		glTexCoord2f(1, 1);
-		glVertex3f( baseW - (divW / 6), h - h2, 0.0f );
-	glEnd();
-
-	glDisable( GL_TEXTURE_2D );
-
-	float h4 = h + h2 + h2 + h3;
-	float h5 = h - ( h3 + h2 + h2 + ( 1.0 - h ) );
-	glColor4f( 1.0f, 1.0f, 1.0f, alpha );
-
-	glBegin( GL_QUADS );
-
-		glColor4f( 1.0f, 1.0f, 1.0f, alpha );
-		glVertex3f( -1.0, h - ( h3 + h2 + h2 ), 0.0f );
-
-		glColor4f( 0.0f, 0.0f, 0.0f, alpha );
-		glVertex3f( -1.0f, h5, 0.0f );
-
-		glColor4f( 0.0f, 0.0f, 0.0f, alpha );
-		glVertex3f( w, h5, 0.0f );
-
-		glColor4fv( glm::value_ptr(this->currentColor) );
-		glVertex3f( w, h - ( h3 + h2 + h2 ), 0.0f );
-
-	glEnd();
+	//>>>>>>>>>>>>>>>END Draw the color chooser
 
 
+	//>>>>>>>>>>>>>>>Draw the selector
+	glActiveTexture(GL_TEXTURE0);
+	TextureManager::Inst()->BindTexture(TEXTURE_TRANSFER_FUNC2);
+
+	sizeW = sizeW / 6.0f;
+	color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+
+	m_mModelViewMatrix =
+		glm::scale(glm::translate(glm::mat4(),
+		glm::vec3(sizeW*0.5f + m_PosHue.x, -sizeH*0.5f + iniH, 0.0f)),	//Translate by half + to its position
+		glm::vec3(sizeW, sizeH, 1.0f));											//Scale
+
+	//Draw a Quad
+	m_program.setUniform("vColor1", color);
+	m_program.setUniform("text", 0);
+	m_program.setUniform("Usetexture", 1);
+	m_program.setUniform("Mode", 0);
+	m_program.setUniform("mModelView", m_mModelViewMatrix);
+	FBOQuad::Instance()->Draw();
+	//>>>>>>>>>>>>>>>END Draw the selector
+
+	//>>>>>>>>>>>>>>>Draw the other image
+	color = glm::vec4(1.0f, 1.0f, 1.0f, alpha);
+
+	iniH = float(SIZEH - (m_imageH + 34));
+	sizeW = float(m_imageW);
+	sizeH = float(m_imageH);
+
+	m_mModelViewMatrix =
+		glm::scale(glm::translate(glm::mat4(),
+		glm::vec3(sizeW*0.5f, -sizeH*0.5f + iniH, 0.0f)),	//Translate by half + to its position
+		glm::vec3(sizeW, sizeH, 1.0f));											//Scale
+
+	//Draw a Quad
+	m_program.setUniform("vColor1", glm::vec4(0.0f, 0.0f, 0.0f, alpha));
+	m_program.setUniform("vColor2", glm::vec4(0.0f, 0.0f, 0.0f, alpha));
+	m_program.setUniform("vColor3", m_currentColor);
+	m_program.setUniform("vColor4", glm::vec4(1.0f, 1.0f, 1.0f, alpha));
+	m_program.setUniform("Usetexture", 0);
+	m_program.setUniform("Mode", 1);
+	m_program.setUniform("mModelView", m_mModelViewMatrix);
+	FBOQuad::Instance()->Draw();
+	//>>>>>>>>>>>>>>>END Draw the other image
+
+
+	//>>>>>>>>>>>>>>>Draw Colors in graphics
 	static float GrsfAlpha = 0.5;
-	float maxH = getY( MAXH );
 
-	for( int point = 1; point < this->ptsCounter; point++ ){
+	for (int point = 1; point < m_ptsCounter; point++){
 
-		float PW1 = getX( this->pointList[ point - 1 ].x );
-		float PH1 = getY( this->pointList[ point - 1 ].y );
+		glm::ivec2 Pos0 = ScalarAlphaToScreenPosTF(m_controlPointVector[point-1].scalar, m_controlPointVector[point-1].color.a);
+		glm::ivec2 Pos1 = ScalarAlphaToScreenPosTF(m_controlPointVector[point].scalar, m_controlPointVector[point].color.a);
 
-		float PW2 = getX( this->pointList[ point ].x );
-		float PH2 = getY( this->pointList[ point ].y );
+		//Draw upper triangle		
+		sizeW = float(abs(Pos1.x - Pos0.x));
+		sizeH = float(abs(Pos1.y - Pos0.y));
 
-		glBegin( GL_QUADS );
-			glColor4f( this->colorList[ point - 1 ].x, this->colorList[ point - 1 ].y, this->colorList[ point - 1 ].z, GrsfAlpha );
-			glVertex2f( PW1, PH1 );
-			glColor4f( this->colorList[ point - 1 ].x, this->colorList[ point - 1 ].y, this->colorList[ point - 1 ].z, GrsfAlpha );
-			glVertex2f( PW1, maxH );
-			glColor4f( this->colorList[ point ].x, this->colorList[ point ].y, this->colorList[ point ].z, GrsfAlpha );
-			glVertex2f( PW2, maxH );
-			glColor4f( this->colorList[ point ].x, this->colorList[ point ].y, this->colorList[ point ].z, GrsfAlpha );
-			glVertex2f( PW2, PH2 );
-		glEnd();
+		iniH = float(std::min(Pos1.y, Pos0.y));
+		iniW = float(std::min(Pos1.x, Pos0.x));
+
+		m_mModelViewMatrix =
+			glm::scale(glm::translate(glm::mat4(),
+			glm::vec3(sizeW*0.5f + iniW, -sizeH*0.5f + SIZEH - iniH, 0.0f)),	//Translate by half + to its position
+			glm::vec3(sizeW, sizeH, 1.0f));											//Scale
+
+
+		m_program.setUniform("vColor1", glm::vec4(m_controlPointVector[point - 1].color.x, m_controlPointVector[point - 1].color.y, m_controlPointVector[point - 1].color.z, GrsfAlpha));
+		m_program.setUniform("vColor2", glm::vec4(m_controlPointVector[point].color.x, m_controlPointVector[point].color.y, m_controlPointVector[point].color.z, GrsfAlpha));
+		m_program.setUniform("vColor3", glm::vec4(m_controlPointVector[point].color.x, m_controlPointVector[point].color.y, m_controlPointVector[point].color.z, GrsfAlpha));
+		m_program.setUniform("vColor4", glm::vec4(m_controlPointVector[point - 1].color.x, m_controlPointVector[point - 1].color.y, m_controlPointVector[point - 1].color.z, GrsfAlpha));
+		m_program.setUniform("Usetexture", 0);
+		if (Pos0.y > Pos1.y) m_program.setUniform("Mode", 2);
+		else m_program.setUniform("Mode", 3);
+		m_program.setUniform("mModelView", m_mModelViewMatrix);
+		FBOQuad::Instance()->Draw();
+
+
+		//Draw lower quad
+		sizeW = float(Pos1.x - Pos0.x);
+		sizeH = float(MAXH - std::max(Pos1.y, Pos0.y));
+
+		if (sizeH > 0){
+			m_mModelViewMatrix =
+				glm::scale(glm::translate(glm::mat4(),
+				glm::vec3(sizeW*0.5f + iniW, sizeH*0.5f + SIZEH - MAXH, 0.0f)),	//Translate by half + to its position
+				glm::vec3(sizeW, sizeH, 1.0f));											//Scale
+
+			/*m_program.setUniform("vColor1", glm::vec4(m_controlPointVector[point - 1].color.x, m_controlPointVector[point - 1].color.y, m_controlPointVector[point - 1].color.z, GrsfAlpha));
+			m_program.setUniform("vColor2", glm::vec4(m_controlPointVector[point].color.x, m_controlPointVector[point].color.y, m_controlPointVector[point].color.z, GrsfAlpha));
+			m_program.setUniform("vColor3", glm::vec4(m_controlPointVector[point].color.x, m_controlPointVector[point].color.y, m_controlPointVector[point].color.z, GrsfAlpha));
+			m_program.setUniform("vColor4", glm::vec4(m_controlPointVector[point - 1].color.x, m_controlPointVector[point - 1].color.y, m_controlPointVector[point - 1].color.z, GrsfAlpha));*/
+			m_program.setUniform("Mode", 1);
+			m_program.setUniform("mModelView", m_mModelViewMatrix);
+			FBOQuad::Instance()->Draw();
+		}
 
 	}
+	//>>>>>>>>>>>>>>>END Colors in graphics
 
-	float plusX = 1.0 + getX( 5 );
-	float plusY = 1.0 - getY( 5 );
 
-	glBindTexture( GL_TEXTURE_2D, this->ptsId );
-	glEnable( GL_TEXTURE_2D );
+	//>>>>>>>>>>>>>>>Draw each point
+	glActiveTexture(GL_TEXTURE0);
+	TextureManager::Inst()->BindTexture(TEXTURE_TRANSFER_FUNC1);
 
-	for( int point = 0; point < this->ptsCounter; point++ )
+	for (int point = 0; point < m_ptsCounter; point++)
 	{
-		float PW = getX( this->pointList[ point ].x );
-		float PH = getY( this->pointList[ point ].y );
+		if (point != m_pointSelected - 1) color = glm::vec4(1.0f, 1.0f, 1.0f, 0.5f);
+		else color = glm::vec4(0.0f, 0.8f, 1.0f, alpha);
 
-		if( point != this->pointSelected - 1 ) glColor4f( 1.0f, 1.0f, 1.0f, 0.5f );
-		else glColor4f( 0.0f, 0.8f, 1.0f, alpha );
 
-		glBegin( GL_QUADS );	
+		glm::ivec2 pos = ScalarAlphaToScreenPosTF(m_controlPointVector[point].scalar, m_controlPointVector[point].color.a);
 
-			glTexCoord2f(0, 1);
-			glVertex2f( PW - plusX, PH + plusY );
+		m_mModelViewMatrix =
+			glm::scale(glm::translate(glm::mat4(),
+			glm::vec3(pos.x, -pos.y + SIZEH, 0.0f)),	//Translate to its position
+			glm::vec3(10.0f, 10.0f, 1.0f));											//Scale
 
-			glTexCoord2f(0, 0);
-			glVertex2f( PW - plusX, PH - plusY );
-
-			glTexCoord2f(1, 0);
-			glVertex2f( PW + plusX, PH - plusY );
-
-			glTexCoord2f(1, 1);
-			glVertex2f( PW + plusX, PH + plusY );
-		glEnd();
+		//Draw a Quad
+		m_program.setUniform("vColor1", color);
+		m_program.setUniform("Usetexture", 1);
+		m_program.setUniform("Mode", 0);
+		m_program.setUniform("mModelView", m_mModelViewMatrix);
+		FBOQuad::Instance()->Draw();
 	}
+	//>>>>>>>>>>>>>>>END Draw each point
 
-	glColor4f( 1.0f, 1.0f, 1.0f, alpha );
-	float PWCP = getX( this->currentColorPickerPos.x );
-	float PHCP = getY( this->currentColorPickerPos.y );
 
-	glBegin( GL_QUADS );	
-		glTexCoord2f(0, 1);
-		glVertex2f( PWCP - plusX, PHCP + plusY );
+	//>>>>>>>>>>>>>>>Draw circle selector
+	color = glm::vec4(1.0f, 1.0f, 1.0f, alpha);
 
-		glTexCoord2f(0, 0);
-		glVertex2f( PWCP - plusX, PHCP - plusY );
+	m_mModelViewMatrix =
+		glm::scale(glm::translate(glm::mat4(),
+		glm::vec3(m_PosSV.x, -5.0f - m_PosSV.y + SIZEH, 0.0f)),	//Translate to its position
+		glm::vec3(10, 10, 1.0f));											//Scale
 
-		glTexCoord2f(1, 0);
-		glVertex2f( PWCP + plusX, PHCP - plusY );
-
-		glTexCoord2f(1, 1);
-		glVertex2f( PWCP + plusX, PHCP + plusY );
-	glEnd();
+	//Draw a Quad
+	m_program.setUniform("vColor1", color);
+	m_program.setUniform("Usetexture", 1);
+	m_program.setUniform("Mode", 0);
+	m_program.setUniform("mModelView", m_mModelViewMatrix);
+	FBOQuad::Instance()->Draw();
+	//>>>>>>>>>>>>>>>END Draw circle selector
 
 	glDisable(GL_BLEND);
+	glEnable(GL_DEPTH_TEST);
 
-	glViewport(0, 0,  *windowsW, *windowsH);
+	glViewport(0, 0, *m_windowsW, *m_windowsH);
 }
 
-bool TransferFunction::MouseButton( int w, int h, int button, int action )
+//Function to process the mouse button
+bool TransferFunction::MouseButton(int w, int h, int button, int action)
 {
-	if(!isVisible)
+	if (!m_isVisible)
 		return false;
 
-	w-=posx;
-	h-=posy;
+	int oldh = h, oldw = w;
+	w -= m_realposx;
+	h -= m_realposy;
 
-	static int DIVBASESC = MAXWSC / 6;
-	
-	if( button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS )
+	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
 	{
-		if( w >= MINW - 5 && w <= MAXW + 5 && h >= MINH - 5 && h <= MAXH + 5 )
+		//Graphic area
+		if (w >= MINW - 5 && w <= MAXW + 5 && h >= MINH - 5 && h <= MAXH + 5)
 		{
-			if( !this->Picking( w, h, GRAFIC ) )
+			//If you dont pick a control point
+			if (!Picking(w, h))
 			{
-				if( this->ptsCounter < MAXPOINT - 1 )
+				//Add a point if you can
+				if (m_ptsCounter < MAXPOINT - 1)
 				{
-					this->pointList[ this->ptsCounter ].x  = w;
-					this->pointList[ this->ptsCounter ].y  = h;
-					this->pointSelected = ++this->ptsCounter;
+					if (h < MINH) h = MINH;
+					if (h > MAXH) h = MAXH;
+					if (w < MINW) w = MINW;
+					if (w > MAXW) w = MAXW;
 
-					this->UpdateColorPoint();
+					m_PosTF.x = w;
+					m_PosTF.y = h;
+					m_pointSelected = ++m_ptsCounter;
+
+
+					
+
+					//Allow this point to drag and drop
+					Picking(w, h);
+
+					UpdateColorPoint();
+					SortPoints();
 				}
 			}
 			else
 			{
-				this->indicatorSC = this->colorPosList[ this->pointSelected - 1 ];
-
-				int completeSize =  ( this->indicatorSC / DIVBASESC )  * DIVBASESC;
-				int currentSize = this->indicatorSC - completeSize;
-				float t = ( float )currentSize / ( float ) DIVBASESC;
-
-				this->currentColor = this->baseColors[ completeSize / DIVBASESC ] * ( 1.0 - t ) + this->baseColors[ ( ( completeSize / DIVBASESC ) + 1 ) % 6 ] * t;
-
-				this->currentColorPickerPos = this->colorPickerPosList[ this->pointSelected - 1 ];
+				//If we pick a point update the color chooser and the color selector
+				m_PosTF = ScalarAlphaToScreenPosTF(m_controlPointVector[m_pointSelected - 1].scalar, m_controlPointVector[m_pointSelected - 1].color.a);
+				m_PosHue = HSVToScreenPosHue(m_controlPointVector[m_pointSelected - 1].hsv);
+				m_PosSV = HSVToScreenPosSV(m_controlPointVector[m_pointSelected - 1].hsv);
+				setCurrentColor();
 			}
-			this->SortPoints();
-			this->UpdatePallete();
+
+			//Either way update the pallete
+			UpdatePallete();
 
 			return true;
 		}
-		else if( w >= MINWSC && w <= MAXWSC && h >= MINHSC && h <= MAXHSC )
+		else if (w >= MINWSC && w <= MAXWSC && h >= MINHSC && h <= MAXHSC)
 		{
-			this->Picking( w, h, SELECTCOLOR );
-			this->indicatorSC = w;
+			//Allways allow picking the color selector
+			m_dragDropColor = true;
 
-			int completeSize =  ( this->indicatorSC / DIVBASESC )  * DIVBASESC;
-			int currentSize = this->indicatorSC - completeSize;
-			float t = ( float )currentSize / ( float ) DIVBASESC;
+			//Move to the position of the mouse
+			m_PosHue.x = w;
 
-			this->currentColor = this->baseColors[ completeSize / DIVBASESC ] * ( 1.0 - t ) + this->baseColors[ ( ( completeSize / DIVBASESC ) + 1 ) % 6 ] * t;
-
-			if( this->pointSelected != 0 ) this->UpdateColorPoint();
-			this->UpdatePallete();
-
+			//Update the pallete!!!
+			if (m_pointSelected != 0) UpdateColorPoint();
+			UpdatePallete();
 			return true;
 		}
-		else if( w >= MINWPC && w <= MAXWPC && h >= MINHPC && h <= MAXHPC )
+		else if (w >= MINWPC && w <= MAXWPC && h >= MINHPC && h <= MAXHPC)
 		{
-			this->Picking( w, h, PICKERCOLOR );
+			//Allways allow picking the color picker
+			m_dragDropPicker = true;
 
-			if( w < MINWPC + 6 ) w = MINWPC + 6; if( w > MAXWPC - 6 ) w = MAXWPC - 6;
-			if( h < MINHPC + 6 ) h = MINHPC + 6; if( h > MAXHPC - 6 ) h = MAXHPC - 6;
+			//Clamp coordinates
+			h = h - 5;
+			if (w < MINWPC + 5) w = MINWPC + 5; if (w > MAXWPC - 5) w = MAXWPC - 5;
+			if (h < MINHPC + 5) h = MINHPC + 5; if (h > MAXHPC - 5) h = MAXHPC - 5;
 
-			this->currentColorPickerPos.x = w;
-			this->currentColorPickerPos.y = h;
+			//Change its position
+			m_PosSV.x = w;
+			m_PosSV.y = h;
 
-			if( this->pointSelected != 0 ) this->UpdateColorPoint();
-			this->UpdatePallete();
-
+			//Update the pallete!!!
+			if (m_pointSelected != 0) UpdateColorPoint();
+			UpdatePallete();
 			return true;
 		}
-		else if( w >= 0 && w <= 365 && h >= 0 && h <= 455 )
+		else if (w >= 0 && w <= 365 && h >= 0 && h <= 455)
 		{
-			antx = posx + w;
-			anty = posy + h;
-			dragDropWindow = true;
-			alpha = 0.7f;
+			//If you dont select anything drag the GUI
+			m_antx = oldw;
+			m_anty = oldh;
+			m_dragDropWindow = true;
 
 			return true;
 		}
 	}
-	else if( button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
+	else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
 	{
-		return DeletePoint(w,h);
+		//Delete a point with right click
+		return DeletePoint(w, h);
 	}
-	else if ( action == GLFW_RELEASE )
+	else if (action == GLFW_RELEASE)
 	{
-		this->dragDrop = false;
-		this->dragDropColor = false;
-		this->dragDropPicker = false;
-		this->dragDropWindow = false;
-		alpha = 0.5f;
+		//Reset all te drag and drops
+		m_dragDrop = false;
+		m_dragDropColor = false;
+		m_dragDropPicker = false;
+		m_dragDropWindow = false;
 	}
 
 	return false;
 }
 
-bool TransferFunction::DeletePoint( int w, int h )
+//funtion with the mouse movement actions
+bool TransferFunction::CursorPos(int w, int h)
 {
-	int saveLastSelectedPoint = this->pointSelected;
-	
-	if( this->Picking( w, h, GRAFIC ) )
-	{
-		if( this->lastPicking != 1 && this->lastPicking != this->ptsCounter )
-		{
-			if( saveLastSelectedPoint == this->lastPicking ) 
-				this->pointSelected = 0;
-			else
-				this->pointSelected = saveLastSelectedPoint;
-			
-			SortPoints( this->lastPicking - 1 );
-			this->UpdatePallete();
-			this->pointSelected = 1;
-			this->lastPicking = -1;
-			this->ptsCounter--;
-		}else
-			this->pointSelected = 0;
+	if (!m_isVisible)
+		return false;
 
-		this->dragDrop = false;
+	int oldh = h, oldw = w;
+	w -= m_realposx;
+	h -= m_realposy;
+
+	static int DIVBASESC = MAXWSC / 6;
+
+	if (m_dragDrop)
+	{
+		//Drag and drop the points
+		if (w > MAXW) w = MAXW;	if (h > MAXH) h = MAXH;
+		if (w < MINW) w = MINW;	if (h < MINH) h = MINH;
+
+		if (m_lastPicking - 1 != 0 && m_lastPicking != m_ptsCounter) m_PosTF.x = w;
+		m_PosTF.y = h;
+
+		if (m_pointSelected != 0) UpdateColorPoint();
+		SortPoints();
+		UpdatePallete();
+
+		return true;
+	}
+	else if (m_dragDropColor)
+	{
+		if (w > MAXWSC - 5) w = MAXWSC - 5;	if (w < MINWSC) w = MINWSC;
+
+		//Allways allow picking the color selector
+		m_dragDropColor = true;
+
+		//Move to the position of the mouse
+		m_PosHue.x = w;
+
+		//Update the point!!!
+		if (m_pointSelected != 0) UpdateColorPoint();
+		UpdatePallete();
+
+		return true;
+	}
+	else if (m_dragDropPicker)
+	{
+		//Allways allow picking the color picker
+		h = h - 5;
+		if (w < MINWPC + 5) w = MINWPC + 5; if (w > MAXWPC - 5) w = MAXWPC - 5;
+		if (h < MINHPC + 5) h = MINHPC + 5; if (h > MAXHPC - 5) h = MAXHPC - 5;
+
+		//Change its position
+		m_PosSV.x = w;
+		m_PosSV.y = h;
+
+		//Update the selected Point!!!
+		if (m_pointSelected != 0) UpdateColorPoint();
+		UpdatePallete();
+
+		return true;
+	}
+	else if (m_dragDropWindow)
+	{
+		//Translate by the difference of the 2 clicks
+		int tx = oldw - m_antx;
+		int ty = oldh - m_anty;
+
+		//Update the new coordinates
+		if (m_corner) m_corner = false;
+
+		m_realposx += tx;
+		m_realposy += ty;
+
+		//Resize the window
+		Resize(m_windowsW, m_windowsH);
+
+		m_antx = oldw;
+		m_anty = oldh;
+
 		return true;
 	}
 
 	return false;
 }
 
-bool TransferFunction::Picking( int x, int y, PickingValidation type )
+//Function to delete a point
+bool TransferFunction::DeletePoint(int w, int h)
 {
-	GLuint buff[64] = {0};
-	GLint  hits, view[4];
-	this->lastPicking = -1;
-	this->lastPickingColor = 0;
+	int saveLastSelectedPoint = m_pointSelected;
 
-	glSelectBuffer(64, buff);
-	glGetIntegerv( GL_VIEWPORT, view );
-	glRenderMode( GL_SELECT );
-	glInitNames();
-	glPushName(0);
-
-	glMatrixMode(GL_PROJECTION);
-	glPushMatrix();
-		glLoadIdentity();
-
-		gluPickMatrix(x, view[3]-y, 1.0, 1.0, view );
-		glOrtho(0, *this->windowsW, *this->windowsH, 0, 0, 0);
-
-		glMatrixMode(GL_MODELVIEW);
-		glfwSwapBuffers(this->window);
-
-		if( type == GRAFIC )
-		{
-			float plusX = 1.0 + getX( 7 );
-			float plusY = 1.0 - getY( 7 );
-
-			for( int point = 0; point < this->ptsCounter; point++ )
-			{
-				glLoadName( point + 1 );
-
-				float PW = getX( this->pointList[ point ].x );
-				float PH = getY( this->pointList[ point ].y );
-
-				glBegin( GL_QUADS );	
-					glVertex2f( PW - plusX, PH + plusY );
-					glVertex2f( PW - plusX, PH - plusY );
-					glVertex2f( PW + plusX, PH - plusY );
-					glVertex2f( PW + plusX, PH + plusY );
-				glEnd();
-
-			}
-		}
-		else if( type ==  SELECTCOLOR )
-		{
-			float h = getY( imageH );
-			float divW = ( -1.0 - getX( imageW ) ) / 6.0;
-			float h2 = 1.0 - getY( 2 );
-			float h3 = 1.0 - getY( 30 );
-
-			for( int i=0; i<6; i++ )
-			{
-				glLoadName( i + 1 );
-
-				glBegin( GL_QUADS );
-					glVertex3f( -1.0 - divW * i, h - h2, 0.0f );
-					glVertex3f( -1.0 - divW * i, h - h3, 0.0f );
-					glVertex3f( -1.0 - divW * ( i + 1 ), h - h3, 0.0f );
-					glVertex3f( -1.0 - divW * ( i + 1 ), h - h2, 0.0f );
-				glEnd();
-			}
-		}
-		else if( type == PICKERCOLOR )
-		{
-			float plusX = 1.0 + getX( 7 );
-			float plusY = 1.0 - getY( 7 );
-
-			float PWCP = getX( this->currentColorPickerPos.x );
-			float PHCP = getY( this->currentColorPickerPos.y );
-
-			float w = getX( imageW );
-			float h = getY( imageH );			
-			float divW = ( -1.0 - w ) / 6.0;
-			float h2 = 1.0 - getY( 2 );
-			float h3 = 1.0 - getY( 30 );
-			float alpha = 1.0;
-			float h4 = h + h2 + h2 + h3;
-			float h5 = h - ( h3 + h2 + h2 + ( 1.0 - h ) );
-
-			glBegin( GL_QUADS );
-				glVertex3f( -1.0, h - ( h3 + h2 + h2 ), 0.0f );
-				glVertex3f( -1.0f, h5, 0.0f );
-				glVertex3f( w, h5, 0.0f );
-				glVertex3f( w, h - ( h3 + h2 + h2 ), 0.0f );
-			glEnd();
-		}
-
-		glMatrixMode(GL_PROJECTION);
-	glPopMatrix();
-
-	hits = glRenderMode( GL_RENDER );
-	for( int i = 0; i < hits; i++ )
+	//Check if there is a point
+	if (Picking(w, h))
 	{
-		if( i == hits - 1 )
+		if (m_lastPicking != 1 && m_lastPicking != m_ptsCounter)
 		{
-			if( type == GRAFIC )
-			{
-				this->lastPicking = (GLubyte) buff[ i * 4 + 3 ];
-				this->pointSelected = this->lastPicking;
-				this->dragDrop = true;
-				break;
-			}
-			else if( type == SELECTCOLOR )
-			{
-				this->lastPickingColor = (GLubyte) buff[ i * 4 + 3 ];
-				this->dragDropColor = true;
-				break;
-			}
-			else if( type == PICKERCOLOR )
-			{
-				this->dragDropPicker = true;
-				break;
-			}
+			if (saveLastSelectedPoint == m_lastPicking)
+				m_pointSelected = 0;
+			else
+				m_pointSelected = saveLastSelectedPoint;
+
+			SortPoints(m_lastPicking - 1);
+			UpdatePallete();
+			m_pointSelected = 0;
+			m_lastPicking = -1;
+			m_ptsCounter--;
 		}
+		else
+			m_pointSelected = 0;
+
+		m_dragDrop = false;
+		return true;
 	}
 
-	glMatrixMode(GL_MODELVIEW);
-	return this->dragDrop;
+	return false;
 }
 
-void TransferFunction::SortPoints( int jumpPoint )
+//Function to do picking
+bool TransferFunction::Picking(int x, int y)
 {
-	std::priority_queue< specialPoint > pilaState;
-	int less = ( jumpPoint == -1 )?0:1;
+	//Search for the point
+	for (int point = 0; point < m_ptsCounter; point++){
 
-	for( int point = 0; point < this->ptsCounter; point++ ){
-		if( point != jumpPoint ){
-			bool selectPicking =  (( this->dragDrop ) && ( point == this->lastPicking - 1 ));
-			bool selectPoint = ( point == this->pointSelected - 1 );
-			pilaState.push( specialPoint( this->pointList[ point ], this->colorList[ point ], this->colorPickerPosList[ point ], this->colorPosList[ point ], selectPicking, selectPoint ) );
+		glm::ivec2 pos = ScalarAlphaToScreenPosTF(m_controlPointVector[point].scalar, m_controlPointVector[point].color.a);
+
+		//Take advantage of the point's sorting
+		if (x < pos.x - 5) break;
+
+		//The right coordinate
+		if (pos.x + 5 > x && pos.x - 5 < x &&
+			pos.y + 5 > y && pos.y - 5 < y){
+			m_pointSelected = m_lastPicking = point + 1;
+			m_dragDrop = true;
+			return true;
 		}
 	}
-	
-	for( int point = 0; point < this->ptsCounter - less; point++ ){
 
-		this->pointList[ point ] = pilaState.top().point;
-		this->colorList[ point ] = pilaState.top().color;
-		this->colorPosList[ point ] = pilaState.top().selectedColorPos;
-		this->colorPickerPosList[ point ] = pilaState.top().pickerPos;
+	return false;
+}
 
-		if( pilaState.top().drag ) this->lastPicking = point + 1;
-		if( pilaState.top().selected ) this->pointSelected = point + 1;
+//Function to sort the points
+void TransferFunction::SortPoints(int jumpPoint)
+{
+	std::priority_queue< ControlPoint > pilaState;
+	int less = (jumpPoint == -1) ? 0 : 1;
+
+	//Insert the points in a priority queue
+	for (int point = 0; point < m_ptsCounter; point++){
+		if (point != jumpPoint){
+			m_controlPointVector[point].drag = ((m_dragDrop) && (point == m_lastPicking - 1));
+			m_controlPointVector[point].selected = (point == m_pointSelected - 1);
+			pilaState.push(m_controlPointVector[point]);
+		}
+	}
+
+	//Put them back into the array
+	for (int point = 0; point < m_ptsCounter - less; point++){
+
+		m_controlPointVector[point] = pilaState.top();
+		if (m_controlPointVector[point].drag) m_lastPicking = point + 1;
+		if (m_controlPointVector[point].selected) m_pointSelected = point + 1;
+
+		m_controlPointVector[point].drag = false;
+		m_controlPointVector[point].selected = false;
 		pilaState.pop();
 
 	}
 }
 
-bool TransferFunction::CursorPos( int w, int h )
-{
-	if(!isVisible)
-		return false;
-
-	w-=posx;
-	h-=posy;
-
-	static int DIVBASESC = MAXWSC / 6;
-
-	if( this->dragDrop )
-	{
-		if( w > MAXW ) w = MAXW;	if( h > MAXH ) h = MAXH;
-		if( w < MINW ) w = MINW;	if( h < MINH ) h = MINH;		
-
-		if( this->lastPicking - 1 != 0 && this->lastPicking != ptsCounter )this->pointList[ this->lastPicking - 1 ].x  = w;
-		this->pointList[ this->lastPicking - 1 ].y = h;
-
-		this->SortPoints();
-		if( this->pointSelected != 0 ) this->UpdateColorPoint();
-		this->UpdatePallete();
-
-		return true;
-	}
-	else if( this->dragDropColor )
-	{
-		if( w > MAXWSC - 5 ) w = MAXWSC - 5;	if( w < MINWSC ) w = MINWSC;
-
-		this->indicatorSC = w;
-
-		int completeSize =  ( w / DIVBASESC )  * DIVBASESC;
-		int currentSize = w - completeSize;
-		float t = ( float )currentSize / ( float ) DIVBASESC;
-
-		this->currentColor = this->baseColors[ completeSize / DIVBASESC ] * ( 1.0 - t ) + this->baseColors[ ( ( completeSize / DIVBASESC ) + 1 ) % 6 ] * t;
-
-		if( this->pointSelected != 0 ) this->UpdateColorPoint();
-		this->UpdatePallete();
-
-		return true;
-	}
-	else if( this->dragDropPicker )
-	{
-		if( w > MAXWPC ) w = MAXWPC;	if( h > MAXHPC ) h = MAXHPC;
-		if( w < MINWPC ) w = MINWPC;	if( h < MINHPC ) h = MINHPC;
-
-		if( w < MINWPC + 5 ) w = MINWPC + 5; if( w > MAXWPC - 5 ) w = MAXWPC - 5;
-		if( h < MINHPC + 5 ) h = MINHPC + 5; if( h > MAXHPC) h = MAXHPC;
-
-		this->currentColorPickerPos.x = w;
-		this->currentColorPickerPos.y = h;
-
-		if( this->pointSelected != 0 ) this->UpdateColorPoint();
-		this->UpdatePallete();
-
-		return true;
-	}
-	else if( this ->dragDropWindow )
-	{
-		int tx = 2 * posx + w - antx;
-		int ty = 2 * posy + h - anty; 
-
-		antx = posx + w;
-		anty = posy + h;
-
-		if(tx < *this->windowsW - 360 && tx > 0)
-			posx = tx;
-		
-		if(ty < *this->windowsH - 455 && ty > 0)
-			posy = ty; 	
-		
-		return true;
-	}
-
-	return false;
-}
-
-void TransferFunction::UpdateColorPoint()
-{
-	static glm::vec4 whiteColor( 1.0f, 1.0f, 1.0f, 1.0 );
-	static glm::vec4 blackColor( 0.0f, 0.0f, 0.0f, 1.0 );
-	float alpha = 1.0 - (( float )( pointList[ this->pointSelected - 1 ].y - MINH ) / ( float )( MAXH - MINH ));
-	glm::vec4 copyCurrentColor( this->currentColor.x, this->currentColor.y, this->currentColor.z, alpha );
-
-	float tw =  (float)this->currentColorPickerPos.x / (float)MAXWPC;
-	float th = (float)( this->currentColorPickerPos.y - MINHPC ) / (float)( MAXHPC - MINHPC );
-
-	glm::vec4 colorW = whiteColor * ( 1.0 - tw ) + copyCurrentColor * tw;
-	this->colorList[ this->pointSelected - 1 ] = colorW * ( 1.0 - th ) + blackColor * th;
-	this->colorList[ this->pointSelected - 1 ].w = alpha;
-
-	this->colorPosList[ this->pointSelected - 1 ] = this->indicatorSC;
-	this->colorPickerPosList[ this->pointSelected - 1 ] = this->currentColorPickerPos;
-}
-
+//Function to update pallete of colors
 void TransferFunction::UpdatePallete()
 {
-	static float completeAreaSize = MAXW - MINW;
-	static float stepSizeBox = completeAreaSize / NUMOFCOLORS;
-	int indexOfPallete = 0;
+	int index = 0;
 
-	for( int point = 1; point < this->ptsCounter; point++ )
+	//interpolation between two scalar values
+	for (int point = 1; point < m_ptsCounter; point++)
 	{
-		float dist = pointList[ point ].x - pointList[ point - 1 ].x;
-		int stepsNumber = dist / stepSizeBox;
+		int dist = m_controlPointVector[point].scalar - m_controlPointVector[point - 1].scalar;
+		int stepsNumber = dist;
 
-		float floatStepSize = stepSizeBox / dist;
+		float floatStepSize = 1.0f / float(dist);
 
-		for( int step = 0; step < stepsNumber; step++, indexOfPallete++ )
+		for (int step = 0; step < stepsNumber; step++, index++)
 		{
-			glm::vec4 currentColor = colorList[ point - 1 ] * ( 1.0 - ( floatStepSize * (float) step ) ) + colorList[ point ] * ( floatStepSize * (float) step );
-			this->colorPalette[ indexOfPallete ][ 0 ] = currentColor.x;
-			this->colorPalette[ indexOfPallete ][ 1 ] = currentColor.y;
-			this->colorPalette[ indexOfPallete ][ 2 ] = currentColor.z;
-			this->colorPalette[ indexOfPallete ][ 3 ] = currentColor.w;
+			glm::vec4 currentColor = m_controlPointVector[point - 1].color * (1.0f - (floatStepSize * (float)step)) + m_controlPointVector[point].color * (floatStepSize * (float)step);
+			m_colorPalette[index][0] = currentColor.x;
+			m_colorPalette[index][1] = currentColor.y;
+			m_colorPalette[index][2] = currentColor.z;
+			m_colorPalette[index][3] = currentColor.w;
 		}
 	}
 
-	if( indexOfPallete < 255 )
+	//If there are positions to fill
+	if (index < 256)
 	{
-		glm::vec4 currentColor = colorList[ this->ptsCounter - 1 ];
+		glm::vec4 color = m_controlPointVector[m_ptsCounter - 1].color;
 
-		for( int step = indexOfPallete; step < 256; step++, indexOfPallete++ )
+		for (int step = index; step < 256; step++, index++)
 		{
-			this->colorPalette[ indexOfPallete ][ 0 ] = currentColor.x;
-			this->colorPalette[ indexOfPallete ][ 1 ] = currentColor.y;
-			this->colorPalette[ indexOfPallete ][ 2 ] = currentColor.z;
-			this->colorPalette[ indexOfPallete ][ 3 ] = currentColor.w;
+			m_colorPalette[index][0] = color.x;
+			m_colorPalette[index][1] = color.y;
+			m_colorPalette[index][2] = color.z;
+			m_colorPalette[index][3] = color.w;
 		}
 	}
 
-	this->updateTexture = true;
+	//Load the new texture
+	TextureManager::Inst()->BindTexture(TEXTURE_TRANSFER_FUNC);
+	glTexSubImage1D(GL_TEXTURE_1D, 0, 0, 256, GL_RGBA, GL_FLOAT, m_colorPalette);
+}
+
+
+/**
+* Function to use the texture
+*/
+void TransferFunction::Use(GLenum activeTexture)
+{
+	glActiveTexture(activeTexture);
+	TextureManager::Inst()->BindTexture(TEXTURE_TRANSFER_FUNC);
+}
+
+
+/**
+* Function to save to a file the transfer function
+*/
+void TransferFunction::SaveToFile(string filename)
+{
+	std::ofstream out(filename, std::ios::out);
+	out << m_ptsCounter << std::endl;
+	for (int point = 0; point < m_ptsCounter; point++)
+	{
+		out << m_controlPointVector[point].scalar << " " <<
+			m_controlPointVector[point].color.r << " " <<
+			m_controlPointVector[point].color.g << " " <<
+			m_controlPointVector[point].color.b << " " <<
+			m_controlPointVector[point].color.a << std::endl;
+	}
+	out.close();
+}
+
+
+//convert from rgb to hsv
+HSV TransferFunction::RGBtoHSV(glm::vec3 colorRGB){
+	float cmax = fmaxf(colorRGB.r, fmaxf(colorRGB.g, colorRGB.b));
+	float cmin = fminf(colorRGB.r, fminf(colorRGB.g, colorRGB.b));
+	float cdif = cmax - cmin;
+	
+	
+	HSV hsv;
+
+	hsv.v = cmax;
+	
+	if (cdif < 0.00001f) //undefined
+	{
+		hsv.s = 0;
+		hsv.h = 0; // undefined, maybe nan?
+		return hsv;
+	}
+
+	
+	hsv.h = 0;
+
+	if (fabsf(cdif) <  0.001f) 0;
+	else if (fabsf(cmax - colorRGB.r) < 0.001f) hsv.h = fmod((colorRGB.g - colorRGB.b) / cdif, 6.0f);
+	else if (fabsf(cmax - colorRGB.g) < 0.001f)	hsv.h = 2.0f + (colorRGB.b - colorRGB.r) / cdif;
+	else if (fabsf(cmax - colorRGB.b) < 0.001f)	hsv.h = 4.0f + (colorRGB.r - colorRGB.g) / cdif;
+
+	hsv.h = (hsv.h * 60.0f);
+
+	hsv.h = ((hsv.h < 0.0f) ? (360.0f + hsv.h) : hsv.h) / 360.0f;
+
+	hsv.s = 0;
+	if (fabsf(cmax) < 0.001f) hsv.s = 0;
+	else hsv.s = cdif / cmax;
+
+	
+
+	return hsv;
+}
+
+
+//Convert from hsv to rgb
+glm::vec3 TransferFunction::HSVtoRGB(HSV hsv){
+	float c = hsv.v * hsv.s;
+	float hPrime = hsv.h * 360.0f / 60.0f;
+	float x = c * (1.0f - fabsf(fmodf(hPrime, 2) - 1.0f));
+	float m = hsv.v - c;
+	glm::vec3 rgb;
+
+	if (hPrime < 1){
+		rgb = glm::vec3(c,x,0.0f);
+	}
+	else if (hPrime< 2)
+	{
+		rgb = glm::vec3(x, c, 0.0f);
+	}
+	else if (hPrime < 3)
+	{
+		rgb = glm::vec3(0.0f, c, x);
+	}
+	else if (hPrime < 4)
+	{
+		rgb = glm::vec3(0.0f, x, c);
+	}
+	else if (hPrime < 5)
+	{
+		rgb = glm::vec3(x, 0.0f, c);
+	}
+	else if (hPrime < 6)
+	{
+		rgb = glm::vec3(c, 0.0f, x);
+	}
+
+	return glm::vec3(rgb.r + m, rgb.g + m, rgb.b + m);
+}
+
+
+//methods to transform from scree coordinates to color and scalar
+int TransferFunction::ScreenPosToScalar(){
+	return int((m_PosTF.x - MINW) / (float)(MAXW - MINW) * 255);
+}
+
+float TransferFunction::ScreenPosToAlpha(){
+	return 1.0f - ((float)(m_PosTF.y - MINH) / (float)(MAXH - MINH));
+}
+
+glm::vec3 TransferFunction::ScreenPosToRGB(){
+	//get saturation and value
+	float ts = (float)m_PosSV.x / (float)MAXWPC;
+	float tv = 1.0f - (float)(m_PosSV.y - MINHPC) / (float)(MAXHPC - MINHPC);
+
+	HSV hsv;
+	//get hue
+	hsv.h = (m_PosHue.x - MINWSC) / float(MAXWSC - MINWSC);
+	hsv.s = ts;
+	hsv.v = tv;
+
+	//transform it to RGB
+	glm::vec3 final = HSVtoRGB(hsv);
+
+	return final;
+}
+
+
+//method to transform from color to screen coordinates
+glm::ivec2 TransferFunction::ScalarAlphaToScreenPosTF(int scalar, float alpha){
+	glm::ivec2 pos;
+
+	pos.x = int((scalar / 255.0f) * (MAXW - MINW) + MINW);
+	pos.y = int((1.0f - alpha) * (MAXH - MINH) + MINH);
+
+	return pos;
+}
+
+glm::ivec2 TransferFunction::HSVToScreenPosHue(HSV hsv){
+	glm::ivec2 pos;
+
+	pos.x = int(hsv.h*(MAXWSC - MINWSC) + MINWSC);
+	pos.y = int(0*(MAXHSC - MINHSC) + MINHSC);
+
+	return pos;
+}
+
+glm::ivec2 TransferFunction::HSVToScreenPosSV(HSV hsv){
+	glm::ivec2 pos;
+
+	pos.x = int(hsv.s*(MAXWPC - MINWPC) + MINWPC);
+	pos.y = int((1.0f - hsv.v)*(MAXHPC - MINHPC) + MINHPC);
+	return pos;
+}
+
+float TransferFunction::ScreenPosToHue(){
+	return (m_PosHue.x - MINWSC) / float(MAXWSC - MINWSC);
+}
+
+//set the current color to draw in the sturation/value chooser
+void TransferFunction::setCurrentColor(){
+	//Set the current color on the interface
+	HSV hsv;
+	hsv.h = m_controlPointVector[m_pointSelected - 1].hsv.h; 
+	if (hsv.h == 0.0f) hsv.h = ScreenPosToHue();
+	hsv.s = 1.0f;
+	hsv.v = 1.0f;
+	m_currentColor = glm::vec4(HSVtoRGB(hsv), 1.0f);
+}
+
+//Update the color of a point
+void TransferFunction::UpdateColorPoint()
+{
+	// get the scalar and alpha from the screen position
+	int scalar = ScreenPosToScalar();
+	float alpha = ScreenPosToAlpha();
+	
+	//get the color from the hue, saturation, and value from screen
+	glm::vec3 color = ScreenPosToRGB();
+
+	//set the values to the point
+	m_controlPointVector[m_pointSelected - 1].scalar = scalar;
+	m_controlPointVector[m_pointSelected - 1].color = glm::vec4(color, alpha);
+	m_controlPointVector[m_pointSelected - 1].hsv = RGBtoHSV(glm::vec3(m_controlPointVector[m_pointSelected - 1].color));
+
+	//update the current color to draw it properly
+	setCurrentColor();
+}
+
+//set if the pallete needs to be updated
+void TransferFunction::SetUpdate(bool value){
+	m_updateTexture = value;
+}
+
+//check if texture needs update
+bool TransferFunction::NeedUpdate(){
+	return m_updateTexture;
+}
+
+//set if the transfer function is visible
+void TransferFunction::SetVisible(bool value){
+	m_isVisible = value;
 }
