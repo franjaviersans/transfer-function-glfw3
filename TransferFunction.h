@@ -81,10 +81,11 @@ private:
 	//Shaders programs
 	GLSLProgram m_program;
 
-	GLuint m_pallete, m_indextemppallete;
+	GLuint m_iVAO, m_iVBO, m_iVBOIndex, histogram_size;
+	float m_histogram_scale;
 	GLfloat m_colorPalette[256][4];
 
-	bool  m_dragDrop, m_dragDropColor, m_dragDropPicker, m_updateTexture, m_isVisible;
+	bool  m_dragDrop, m_dragDropColor, m_dragDropPicker, m_updateTexture, m_isVisible, m_isHistogram, m_scalingHistogram;
 
 	bool Picking(int x, int y);
 	//sort the point with the scalar value
@@ -125,6 +126,7 @@ public:
 	void SetUpdate(bool value);
 	void SetVisible(bool value);
 	bool NeedUpdate();
+	void SetHistogram(int *histogram, int size);
 };
 
 #endif

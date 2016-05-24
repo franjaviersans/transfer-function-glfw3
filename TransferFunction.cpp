@@ -29,11 +29,22 @@ TransferFunction::TransferFunction(void) :m_imageW(IMAGEWIDHT), m_imageH(IMAGEHE
 
 	//Create new empty textures
 	TextureManager::Inst()->CreateTexture1D(TEXTURE_TRANSFER_FUNC, 256, GL_RGBA8, GL_RGBA, GL_FLOAT, GL_NEAREST, GL_NEAREST);
+
+	glGenVertexArrays(1, &m_iVAO);
+	glGenBuffers(1, &m_iVBO);
+	glGenBuffers(1, &m_iVBOIndex);
+
+	m_isHistogram = false;
+	m_histogram_scale = 1.0f;
+	m_scalingHistogram = false;
 }
 
 //Default constructor
 TransferFunction::~TransferFunction(void)
 {
+	glDeleteVertexArrays(1, &m_iVAO);
+	glDeleteBuffers(1, &m_iVBO);
+	glDeleteBuffers(1, &m_iVBOIndex);
 }
 
 
@@ -315,6 +326,29 @@ void TransferFunction::Display()
 	//>>>>>>>>>>>>>>>END Draw the other image
 
 
+
+	//>>>>>>>>>>>>>>>END Draw HISTOGRAM
+	if (m_isHistogram){
+		glm::ivec2 pos = ScalarAlphaToScreenPosTF(0, 0);
+		m_mModelViewMatrix =	glm::translate(glm::scale(glm::translate(glm::mat4(), 
+								glm::vec3(MINW, SIZEH - MAXH, 0)),  //translate to its position
+								glm::vec3(1.0f, m_histogram_scale, 1.0)),  //scale by some factor
+								glm::vec3(-MINW, -(SIZEH - MAXH), 0.0f)) //translate to origin
+								;
+
+		m_program.setUniform("vColor1", glm::vec4(1.0f, 0.75f, 0.0f, 0.5f));
+
+		m_program.setUniform("Mode", 0);
+		m_program.setUniform("mModelView", m_mModelViewMatrix);
+		m_program.setUniform("Usetexture", 0);
+
+		//draw histogram!!!
+		glBindVertexArray(m_iVAO);
+			glDrawElements(GL_QUADS, histogram_size, GL_UNSIGNED_INT, 0);
+		glBindVertexArray(0);
+	}
+	//>>>>>>>>>>>>>>>END Draw HISTOGRAM
+
 	//>>>>>>>>>>>>>>>Draw Colors in graphics
 	static float GrsfAlpha = 0.5;
 
@@ -448,15 +482,15 @@ bool TransferFunction::MouseButton(int w, int h, int button, int action)
 					m_PosTF.x = w;
 					m_PosTF.y = h;
 					m_pointSelected = ++m_ptsCounter;
+					UpdateColorPoint();
 
-
-					
+					SortPoints();
 
 					//Allow this point to drag and drop
 					Picking(w, h);
 
-					UpdateColorPoint();
-					SortPoints();
+					
+					
 				}
 			}
 			else
@@ -517,8 +551,21 @@ bool TransferFunction::MouseButton(int w, int h, int button, int action)
 	}
 	else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
 	{
-		//Delete a point with right click
-		return DeletePoint(w, h);
+		
+		if (DeletePoint(w, h)){
+			//Delete a point with right click
+			return true;
+		}
+		else{
+			//scale histogram
+			m_antx = oldw;
+			m_anty = oldh;
+			m_scalingHistogram = true;
+			
+			return true;
+		}
+
+		return false;
 	}
 	else if (action == GLFW_RELEASE)
 	{
@@ -527,6 +574,7 @@ bool TransferFunction::MouseButton(int w, int h, int button, int action)
 		m_dragDropColor = false;
 		m_dragDropPicker = false;
 		m_dragDropWindow = false;
+		m_scalingHistogram = false;
 	}
 
 	return false;
@@ -611,6 +659,21 @@ bool TransferFunction::CursorPos(int w, int h)
 		m_anty = oldh;
 
 		return true;
+	}
+	else if (m_scalingHistogram)
+	{
+
+		int tx = oldw - m_antx;
+		int ty = oldh - m_anty;
+
+		//scale histogram by mouse
+		m_histogram_scale += -ty * 0.05f;
+
+		//don't let scale below 1.0f
+		if (m_histogram_scale < 1.0f) m_histogram_scale = 1.0f;
+
+		m_antx = oldw;
+		m_anty = oldh;
 	}
 
 	return false;
@@ -948,4 +1011,114 @@ bool TransferFunction::NeedUpdate(){
 //set if the transfer function is visible
 void TransferFunction::SetVisible(bool value){
 	m_isVisible = value;
+}
+
+//function to set 
+void TransferFunction::SetHistogram(int *histogram, int size){
+
+	//search for the max value
+	int maxid = 0;
+	for (int i = 1; i < size; ++i)
+		if (histogram[i] > histogram[maxid])
+			maxid = i;
+
+	float *normHist = new float[size]; 
+
+
+	//Normalize
+	float maxVal = float(histogram[maxid]);
+	for (int i = 0; i < size; ++i) normHist[i] = histogram[i] / float(maxVal);
+
+
+	//create VBO
+	float *vboHisto = new float[size * 4 * 2];
+	unsigned int *Indexes = new unsigned int[size * 4];
+
+
+
+	unsigned int vertex = 0, index = 0;
+	glm::ivec2 ini = ScalarAlphaToScreenPosTF(0, 0.0f);
+	float init = MINW;
+	float step = (MAXW - MINW) / float(size);
+
+	//create a quad for every scalar value
+	for (int i = 0; i < size; ++i){
+		float heigh = (1.0f - normHist[i]) * (MAXH - MINH) + MINH;
+
+		init += step;
+
+		// quad coordinates
+		vboHisto[vertex] = (float)init;
+		vertex++;
+		vboHisto[vertex] = (float)(-ini.y + SIZEH);
+		vertex++;
+
+		vboHisto[vertex] = (float)(init + step);
+		vertex++;
+		vboHisto[vertex] = (float)(-ini.y + SIZEH);
+		vertex++;
+
+		vboHisto[vertex] = (float)(init + step);
+		vertex++;
+		vboHisto[vertex] = (float)(-heigh + SIZEH);
+		vertex++;
+
+		vboHisto[vertex] = (float)init;
+		vertex++;
+		vboHisto[vertex] = (float)(-heigh + SIZEH);
+		vertex++;
+
+
+		//quad index
+		Indexes[index] = index;
+		++index;
+		Indexes[index] = index;
+		++index;
+		Indexes[index] = index;
+		++index;
+		Indexes[index] = index;
+		++index;
+	}
+
+	// bind buffer for positions and copy data into buffer
+	// GL_ARRAY_BUFFER is the buffer type we use to feed attributes
+	glBindBuffer(GL_ARRAY_BUFFER, m_iVBO);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_iVBOIndex);
+
+		// feed the buffer, and let OpenGL know that we don't plan to
+		// change it (STATIC) and that it will be used for drawing (DRAW)
+		glBufferData(GL_ARRAY_BUFFER, vertex * sizeof(GL_FLOAT), vboHisto, GL_STATIC_DRAW);
+
+		//Set the index array
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, index * sizeof(GL_UNSIGNED_INT), Indexes, GL_STATIC_DRAW);
+
+
+
+	//Generate the VAO
+	glBindVertexArray(m_iVAO);
+
+		// bind buffer for positions and copy data into buffer
+		// GL_ARRAY_BUFFER is the buffer type we use to feed attributes
+		glBindBuffer(GL_ARRAY_BUFFER, m_iVBO);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_iVBOIndex);
+
+			glEnableVertexAttribArray(WORLD_COORD_LOCATION);
+			glVertexAttribPointer(WORLD_COORD_LOCATION, 2, GL_FLOAT, GL_FALSE, sizeof(GL_FLOAT) * 2, BUFFER_OFFSET(0)); //Vertex
+
+		//Unbind the vertex array	
+		glBindVertexArray(0);
+
+
+	//Disable Buffers and vertex attributes
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+
+
+	delete []normHist;
+	delete []vboHisto;
+	delete []Indexes;
+
+	m_isHistogram = true;
+	histogram_size = size * 4;
 }
