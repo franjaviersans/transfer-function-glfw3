@@ -4,7 +4,7 @@ Graphical user interface for transfer function used in volume rendering, origina
 
 ### Usage
 
-In `TransferFunction.h` include glfw3 and glm header files. In `TransferFunction.cpp` edit the way to load the textures in the `initContext` method, in this case was used [DevIL](http://openil.sourceforge.net/).
+In `TransferFunction.h` include glfw3 and glm header files. In `TransferFunction.cpp` edit the way to load the textures in the `initContext` method, in this case was used a textured manager class not included in the repository. There is also a not included singleton class for displaying a unitary quad in the screen.
 
 In the program initialization: 
 ```cpp
