@@ -344,7 +344,7 @@ void TransferFunction::Display()
 
 		//draw histogram!!!
 		glBindVertexArray(m_iVAO);
-			glDrawElements(GL_QUADS, histogram_size, GL_UNSIGNED_INT, 0);
+			glDrawElements(GL_TRIANGLES, histogram_size, GL_UNSIGNED_INT, 0);
 		glBindVertexArray(0);
 	}
 	//>>>>>>>>>>>>>>>END Draw HISTOGRAM
@@ -1032,7 +1032,7 @@ void TransferFunction::SetHistogram(int *histogram, int size){
 
 	//create VBO
 	float *vboHisto = new float[size * 4 * 2];
-	unsigned int *Indexes = new unsigned int[size * 4];
+	unsigned int *Indexes = new unsigned int[size * 6];
 
 
 
@@ -1046,6 +1046,23 @@ void TransferFunction::SetHistogram(int *histogram, int size){
 		float heigh = (1.0f - normHist[i]) * (MAXH - MINH) + MINH;
 
 		init += step;
+
+
+		//quad index
+		Indexes[index] = vertex + 0;
+		index++;
+		Indexes[index] = vertex + 1;
+		index++;
+		Indexes[index] = vertex + 2;
+		index++;
+		Indexes[index] = vertex + 0;
+		index++;
+		Indexes[index] = vertex + 2;
+		index++;
+		Indexes[index] = vertex + 3;
+		index++;
+
+
 
 		// quad coordinates
 		vboHisto[vertex] = (float)init;
@@ -1069,15 +1086,7 @@ void TransferFunction::SetHistogram(int *histogram, int size){
 		vertex++;
 
 
-		//quad index
-		Indexes[index] = index;
-		++index;
-		Indexes[index] = index;
-		++index;
-		Indexes[index] = index;
-		++index;
-		Indexes[index] = index;
-		++index;
+		
 	}
 
 	// bind buffer for positions and copy data into buffer
@@ -1105,8 +1114,8 @@ void TransferFunction::SetHistogram(int *histogram, int size){
 			glEnableVertexAttribArray(WORLD_COORD_LOCATION);
 			glVertexAttribPointer(WORLD_COORD_LOCATION, 2, GL_FLOAT, GL_FALSE, sizeof(GL_FLOAT) * 2, BUFFER_OFFSET(0)); //Vertex
 
-		//Unbind the vertex array	
-		glBindVertexArray(0);
+	//Unbind the vertex array	
+	glBindVertexArray(0);
 
 
 	//Disable Buffers and vertex attributes
@@ -1120,5 +1129,5 @@ void TransferFunction::SetHistogram(int *histogram, int size){
 	delete []Indexes;
 
 	m_isHistogram = true;
-	histogram_size = size * 4;
+	histogram_size = index;
 }
