@@ -1047,19 +1047,21 @@ void TransferFunction::SetHistogram(int *histogram, int size){
 
 		init += step;
 
+		int ver = vertex / 2;
 
 		//quad index
-		Indexes[index] = vertex + 0;
+		Indexes[index] = ver + 0;
 		index++;
-		Indexes[index] = vertex + 1;
+		Indexes[index] = ver + 1;
 		index++;
-		Indexes[index] = vertex + 2;
+		Indexes[index] = ver + 2;
 		index++;
-		Indexes[index] = vertex + 0;
+
+		Indexes[index] = ver + 0;
 		index++;
-		Indexes[index] = vertex + 2;
+		Indexes[index] = ver + 2;
 		index++;
-		Indexes[index] = vertex + 3;
+		Indexes[index] = ver + 3;
 		index++;
 
 
